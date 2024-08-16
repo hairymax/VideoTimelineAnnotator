@@ -12,6 +12,8 @@ PALLETE = [
     [128, 0, 64], [64, 0, 128], [0, 128, 64]
 ]
 
+HEIGHT, WIDTH = 720, 1280
+
 class VideoLabeller:
     def __init__(self, video_path:str, event_classes:dict, output_dir:str, frames_skip:int=1):
         self.video_path = video_path
@@ -36,6 +38,8 @@ class VideoLabeller:
 
         cv2.namedWindow(self.video_name)
         cv2.createTrackbar('Frame', self.video_name, 0, self.total_frames - 1, self.on_trackbar)
+        # control position of trackbar on window
+        cv2.setWindowProperty(self.video_name, cv2.WND_PROP_TOPMOST, 1)
 
         while self.cap.isOpened():
             if self.playing:
@@ -48,11 +52,13 @@ class VideoLabeller:
             ret, frame = self.cap.read()
             if not ret:
                 break
-
+            
+            frame = self.resize_frame(frame)
+            
             cv2.imshow(self.video_name, self.draw_frame(frame))
 
             key = cv2.waitKey(1 if self.playing else 0) & 0xFF
-            print(f"Key {key} pressed")
+            # print(f"Key {key} pressed")
             
             if key == ord(' '):  # Пробел - запуск/остановка воспроизведения
                 self.playing = not self.playing
@@ -116,10 +122,6 @@ class VideoLabeller:
                 if cv2.waitKey(0) & 0xFF == ord('\r'):
                     self.save_annotations()
                     break
-                
-            # elif key == ord('q'):  # Q - выход
-            #     break
-            # else: print(f"Key {key} pressed")
 
             cv2.setTrackbarPos('Frame', self.video_name, self.frame_number)
 
@@ -164,7 +166,7 @@ class VideoLabeller:
         return np.concatenate((frame, progress_img), axis=0)
 
     def create_progress_image(self, height=20):
-        progress_img = np.zeros((height, int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)), 3), dtype=np.uint8)
+        progress_img = np.zeros((height, min(WIDTH, int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))), 3), dtype=np.uint8)
         for annotation in self.annotations:
             start_pos = int((annotation['start_frame'] / self.total_frames) * progress_img.shape[1])
             end_pos = int((annotation['end_frame'] / self.total_frames) * progress_img.shape[1])
@@ -181,8 +183,18 @@ class VideoLabeller:
         self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.frame_number)
         ret, frame = self.cap.read()
         if ret:
+            frame = self.resize_frame(frame)
             cv2.imshow(self.video_name, self.draw_frame(frame))
 
+    def resize_frame(self, frame):
+          # limit displayed frame size to 1280x720
+        height, width, _ = frame.shape
+        if width > WIDTH or height > HEIGHT:
+            scale = min(WIDTH / width, HEIGHT / height)
+            frame = cv2.resize(frame, (int(width * scale), int(height * scale)))
+            
+        return frame
+    
     def save_annotations(self):
         if self.output_dir:
             os.makedirs(self.output_dir, exist_ok=True)
@@ -191,7 +203,10 @@ class VideoLabeller:
             output_file = os.path.join(os.path.dirname(self.video_path), f"{self.video_name}.txt")
         with open(output_file, 'w') as f:
             for annotation in self.annotations:
-                f.write(f"{annotation['class']}, {annotation['start_frame']} {annotation['end_frame']}\n")
+                c, s, e = annotation['class'], annotation['start_frame'], annotation['end_frame']
+                if e < s:
+                    e, s = s, e
+                f.write(f"{c} {s} {e}\n")
         print(f"Annotations saved to {output_file}")
 
     def change_frame_by_step(self, step):
@@ -226,7 +241,6 @@ def main(video_path, event_classes, output_dir, frames_skip=1):
             labeller = VideoLabeller(video_file_path, event_classes, 
                                      output_dir, frames_skip)
             labeller.run()
-
 
 
 if __name__ == "__main__":
