@@ -1,5 +1,3 @@
-Here's the translated instruction:
-
 # VideoTimelineAnnotator
 
 A tool for video timeline segmentation and annotation.
