@@ -54,7 +54,6 @@ class VideoLabeller:
                 break
             
             frame = self.resize_frame(frame)
-            
             cv2.imshow(self.video_name, self.draw_frame(frame))
 
             key = cv2.waitKey(1 if self.playing else 0) & 0xFF
@@ -72,7 +71,7 @@ class VideoLabeller:
             elif key == ord('w') or key == 82:  # Cтрелка вверх - перемещение на 10 кадров назад
                 self.change_frame_by_step(-10)
 
-            elif key == ord('d') or key == 84:  # Стрелка вниз - перемещение на 10 кадр вперёд
+            elif key == ord('s') or key == 84:  # Стрелка вниз - перемещение на 10 кадр вперёд
                 self.change_frame_by_step(10)
                 
             elif key == ord('\r'):  # Enter - ввод класса события
@@ -91,7 +90,7 @@ class VideoLabeller:
                 else:
                     self.select_event_class(self.current_class_id)
                     
-            elif key in [ord(c) for c in self.event_classes.keys()]:  # Выбор класса события кнопкой с клавиатуры
+            elif key in [ord(c) for c in self.event_classes.keys() if len(c) == 1]:  # Выбор класса события кнопкой с клавиатуры
                 self.select_event_class(chr(key))
 
             elif key == ord('\b'):  # Backspace - удаление разметки, внутри которой находится текущий кадр
@@ -117,7 +116,7 @@ class VideoLabeller:
                     if cv2.waitKey(0) & 0xFF == ord('\r'):
                         break
                     
-            elif key == 87:  # End - завершение разметки 
+            elif key == ord('\\'):  # End - завершение разметки 
                 self.draw_msg(frame, "Finish annotation?\n'Enter' to confirm") 
                 if cv2.waitKey(0) & 0xFF == ord('\r'):
                     self.save_annotations()
@@ -248,7 +247,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Video Event Labelling Tool")
-    parser.add_argument("--video_dir", "-v", help="Path to the specific video or the directory containing video files")
+    parser.add_argument("--video_path", "-v", help="Path to the specific video or the directory containing video files")
     parser.add_argument("--class_cfg", "-c", help="Path to the YAML config file with class definitions")
     parser.add_argument("--output_dir", "-o", help="Path to the output directory", default="")
     parser.add_argument("--frames_skip", "-s", help="Number of frames to skip during playback", default=1, type=int)
@@ -257,4 +256,4 @@ if __name__ == "__main__":
     with open(args.class_cfg) as f:
         event_classes = yaml.safe_load(f)
 
-    main(args.video_dir, event_classes, args.output_dir, args.frames_skip)
+    main(args.video_path, event_classes, args.output_dir, args.frames_skip)
