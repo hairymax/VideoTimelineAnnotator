@@ -12,14 +12,13 @@ PALLETE = [
     [128, 0, 64], [64, 0, 128], [0, 128, 64]
 ]
 
-HEIGHT, WIDTH = 720, 12870
+HEIGHT, WIDTH = 720, 1280
 
 class VideoLabeller:
     def __init__(self, video_path:str, event_classes:dict, output_dir:str, frames_skip:int=1):
         self.video_path = video_path
         self.event_classes = event_classes
         self.output_dir = output_dir
-        # self.annotations = []
         self.annotations = self.read_annotation(video_path, output_dir, event_classes)
         self.current_start_frame = None
         self.current_class_id = None
