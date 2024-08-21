@@ -12,14 +12,15 @@ PALLETE = [
     [128, 0, 64], [64, 0, 128], [0, 128, 64]
 ]
 
-HEIGHT, WIDTH = 720, 1280
+HEIGHT, WIDTH = 720, 12870
 
 class VideoLabeller:
     def __init__(self, video_path:str, event_classes:dict, output_dir:str, frames_skip:int=1):
         self.video_path = video_path
         self.event_classes = event_classes
         self.output_dir = output_dir
-        self.annotations = []
+        # self.annotations = []
+        self.annotations = self.read_annotation(video_path, output_dir, event_classes)
         self.current_start_frame = None
         self.current_class_id = None
         self.curret_class_id = None
@@ -223,6 +224,42 @@ class VideoLabeller:
         for i, m in enumerate(msg):
             cv2.putText(frame, m, (10, 100+i*30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
         cv2.imshow(self.video_name, self.draw_frame(frame))
+
+    def read_annotation(self, video_path, output_dir, event_classes):
+        video_name = os.path.basename(video_path).split(".")[0]
+
+        if output_dir:
+            old_annotation_path = os.path.join(output_dir, f"{video_name}.txt")
+        else:
+            old_annotation_path = os.path.join(os.path.dirname(video_path), f"{video_name}.txt")
+
+        if os.path.isfile(old_annotation_path):
+            print(f'Annotation for {video_name} exists!')
+            
+            with open(old_annotation_path, 'r') as old_f:
+                lines = old_f.readlines()
+            
+            annotations = []
+            unique_labels = []
+            for line in lines:
+                annotation = [x.strip() for x in line.split(' ')]
+                annotations.append({
+                    'class': annotation[0],
+                    'start_frame': int(annotation[1]),
+                    'end_frame': int(annotation[2])
+                })
+
+                unique_labels.append(annotation[0])
+            
+            event_classes = list(event_classes.values())
+            
+            if not list(set(unique_labels).difference(event_classes)):
+                return annotations           
+            else:
+                print('Annotations in config doesn\'t correspond to previously annotated file')
+                return []
+        else:
+            return []
 
 def is_video_file(path):
     return path.endswith(('.mp4', '.avi', '.mkv', '.mov', '.webm'))
