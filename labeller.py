@@ -73,6 +73,12 @@ class VideoLabeller:
 
             elif key == ord('s') or key == 84:  # Стрелка вниз - перемещение на 10 кадр вперёд
                 self.change_frame_by_step(10)
+
+            elif key == ord('q'):  # Перемещение на 30 кадров назад
+                self.change_frame_by_step(-30)
+
+            elif key == ord('e'):  # Перемещение на 30 кадр вперёд
+                self.change_frame_by_step(30)
                 
             elif key == ord('\r'):  # Enter - ввод класса события
                 # запрос ввода
