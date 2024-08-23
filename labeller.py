@@ -231,7 +231,7 @@ class VideoLabeller:
         cv2.imshow(self.video_name, self.draw_frame(frame))
 
     def read_annotation(self, video_path, output_dir, event_classes):
-        video_name = os.path.basename(video_path).split(".")[0]
+        video_name = os.path.splitext(os.path.basename(video_path))[0]
 
         if output_dir:
             old_annotation_path = os.path.join(output_dir, f"{video_name}.txt")
