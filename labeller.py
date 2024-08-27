@@ -16,6 +16,15 @@ HEIGHT, WIDTH = 720, 1280
 
 class VideoLabeller:
     def __init__(self, video_path:str, event_classes:dict, output_dir:str, frames_skip:int=1):
+        """ Initializes a new instance of VideoLabeller with the given parameters.
+        
+        Args:
+            video_path (str): Path to the video file or directory containing video files.
+            event_classes (dict): Dictionary representing the event classes.
+            output_dir (str): Path to the output directory, where annotations are saved.
+                If not provided, annotations are saved in the same directory as the video being annotated.
+            frames_skip (int): Number of frames to skip during playback. Defaults to 1.
+        """
         self.video_path = video_path
         self.event_classes = event_classes
         self.output_dir = output_dir
@@ -29,13 +38,30 @@ class VideoLabeller:
         self.total_frames = 0
         self.video_name = os.path.splitext(os.path.basename(video_path))[0]
         self.frames_skip = frames_skip
-
-    def run(self):
         self.cap = cv2.VideoCapture(self.video_path)
+        
+        width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        if width > WIDTH or height > HEIGHT:
+            self.frame_scale = min(WIDTH / width, HEIGHT / height)
+        else:
+            self.frame_scale = 1
+        self.resized_width = int(width * self.frame_scale)
+        self.resized_height = int(height * self.frame_scale)
+        
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self.frame_number = 0
         self.playing = False
+        
 
+    def run(self):
+        """ Runs the video labeller, allowing the user to annotate video frames.
+        
+        The function continuously displays the video frames, and allows the user to navigate
+        through the video using various keys. The user can select an event class and mark the 
+        start and end frames of events. The annotations are saved in the specified directory.
+        The user can also delete annotations and cancel the annotation process.
+        """
         cv2.namedWindow(self.video_name)
         cv2.createTrackbar('Frame', self.video_name, 0, self.total_frames - 1, self.on_trackbar)
         # control position of trackbar on window
@@ -53,7 +79,7 @@ class VideoLabeller:
             if not ret:
                 break
             
-            frame = self.resize_frame(frame)
+            # frame = self.resize_frame(frame)
             cv2.imshow(self.video_name, self.draw_frame(frame))
 
             key = cv2.waitKey(1 if self.playing else 0) & 0xFF
@@ -134,7 +160,16 @@ class VideoLabeller:
         cv2.destroyAllWindows()
 
     def select_event_class(self, event_class_id):
-        # self.current_class_id = self.event_classes[event_class_id]
+        """ Selects the event class.
+
+        Args:
+            event_class_id (str): The id of the event class to be selected.
+
+        If the selected event class is in the list of event classes, its start frame is marked if 
+        none exists, or the event is marked as finished and its start frame is cleared if it exists.
+        The event class is added to the annotations list. If the selected event class is not in the list
+        of event classes, a message is printed indicating that the class is unknown.
+        """
         if event_class_id in self.event_classes.keys():
             self.current_class_id = event_class_id
             if self.current_start_frame is None:
@@ -153,6 +188,22 @@ class VideoLabeller:
             print(f"Unknown class {event_class_id}")
 
     def draw_frame(self, frame):
+        """ Draws the frame with event labels and annotations.
+        
+        Args:
+            frame (numpy.ndarray): The frame to be drawn.
+            
+        Returns:
+            numpy.ndarray: The frame with event labels and annotations.
+            
+        Resizes the frame to specified dimensions. If a class is being labeled, draws a rectangle with
+        label. For each annotation, if current frame is within annotation range, draws a rectangle with
+        corresponding color. Draws current frame number at bottom of frame. Concatenates progress image
+        with frame to display annotation timeline.
+        """
+        if frame.shape[0] != self.resized_height or frame.shape[1] != self.resized_width:
+            frame = cv2.resize(frame, (self.resized_width, self.resized_height))
+        
         if self.current_class_id is not None:
             cv2.rectangle(frame, (10, 10), (frame.shape[1] - 10, 60), (128, 128, 128), -1)
             cv2.putText(frame, f'Labelling {self.event_classes[self.current_class_id]}', (10, 50), 
@@ -171,7 +222,18 @@ class VideoLabeller:
         return np.concatenate((frame, progress_img), axis=0)
 
     def create_progress_image(self, height=20):
-        progress_img = np.zeros((height, min(WIDTH, int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))), 3), dtype=np.uint8)
+        """Creates a progress image to display the timeline of the annotations.
+        
+        Args:
+            height (int): The height of the progress image. Defaults to 20.
+        
+        Returns:
+            numpy.ndarray: The progress image.
+            
+        Progress image is created with specified height and same width as resized video frame. 
+        Annotation rectangles are drawn with colors from PALLETE, and a red line shows current frame.
+        """
+        progress_img = np.zeros((height, self.resized_width, 3), dtype=np.uint8)
         for annotation in self.annotations:
             start_pos = int((annotation['start_frame'] / self.total_frames) * progress_img.shape[1])
             end_pos = int((annotation['end_frame'] / self.total_frames) * progress_img.shape[1])
@@ -184,23 +246,29 @@ class VideoLabeller:
         return progress_img
 
     def on_trackbar(self, position):
+        """ Handles the event when the trackbar value changes.
+        
+        Args:
+            position (int): The new value of the trackbar.
+            
+        Updates frame number and shows the corresponding frame.
+        """
         self.frame_number = position
         self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.frame_number)
         ret, frame = self.cap.read()
         if ret:
-            frame = self.resize_frame(frame)
             cv2.imshow(self.video_name, self.draw_frame(frame))
 
-    def resize_frame(self, frame):
-          # limit displayed frame size to 1280x720
-        height, width, _ = frame.shape
-        if width > WIDTH or height > HEIGHT:
-            scale = min(WIDTH / width, HEIGHT / height)
-            frame = cv2.resize(frame, (int(width * scale), int(height * scale)))
-            
-        return frame
-    
     def save_annotations(self):
+        """Saves the annotations to a file.
+        
+        Each line of the file corresponds to an annotation, with the format:
+        `<event_class> <start_frame> <end_frame>`.
+        If the end frame is before the start frame, they are swapped.
+        The file is saved in the specified directory if provided, otherwise it is saved in the 
+        same directory as the video file, with the same name as the video file but with the extension .txt.
+        The file is overwritten if it already exists.
+        """
         if self.output_dir:
             os.makedirs(self.output_dir, exist_ok=True)
             output_file = os.path.join(self.output_dir, f"{self.video_name}.txt")
@@ -215,6 +283,11 @@ class VideoLabeller:
         print(f"Annotations saved to {output_file}")
 
     def change_frame_by_step(self, step):
+        """ Changes the frame number by a given step value.
+        
+        Args:
+            step (int): The value to change the frame number by.
+        """
         if step < 0:
             self.frame_number = max(self.frame_number + step, 0)
             self.playing = False
@@ -223,6 +296,12 @@ class VideoLabeller:
             self.playing = False
             
     def draw_msg(self, frame, msg):
+        """ Draws a message on the frame with a black background.
+        
+        Args:
+            frame (numpy.ndarray): The frame to draw the message on.
+            msg (str or list): The message to draw. If a string, it is split into lines.
+        """
         if type(msg) == str:
             msg = msg.split('\n')
         cv2.rectangle(frame, (10, 70), (frame.shape[1] - 10, 80+len(msg)*30), (0, 0, 0), -1)
@@ -231,6 +310,17 @@ class VideoLabeller:
         cv2.imshow(self.video_name, self.draw_frame(frame))
 
     def read_annotation(self, video_path, output_dir, event_classes):
+        """ Reads annotations from a file and checks if they correspond to the current video event classes.
+        
+        Args:
+            video_path (str): Path to the video file.
+            output_dir (str): Path to the directory where the annotations are saved.
+            event_classes (dict): Dictionary representing the event classes.
+            
+        Returns:
+            list or None: A list of annotations if they correspond to the current video event classes, 
+            None otherwise.
+        """
         video_name = os.path.splitext(os.path.basename(video_path))[0]
 
         if output_dir:
@@ -268,6 +358,7 @@ class VideoLabeller:
 
 def is_video_file(path):
     return path.endswith(('.mp4', '.avi', '.mkv', '.mov', '.webm'))
+
 
 def main(video_path, event_classes, output_dir, frames_skip=1):
     if is_video_file(video_path):
