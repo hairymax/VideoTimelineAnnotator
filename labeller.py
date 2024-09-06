@@ -80,7 +80,7 @@ class VideoLabeller:
                 break
             
             # frame = self.resize_frame(frame)
-            cv2.imshow(self.video_name, self.draw_frame(frame))
+            self.draw_frame(frame)
 
             key = cv2.waitKey(1 if self.playing else 0) & 0xFF
             # print(f"Key {key} pressed")
@@ -110,7 +110,7 @@ class VideoLabeller:
                 # запрос ввода
                 if self.current_class_id is None:
                     class_str = ''
-                    self.draw_msg(frame, "Enter class id: ")
+                    self.draw_frame(frame, "Enter class id: ")
                     while True:
                         key = cv2.waitKey(0) & 0xFF
                         if key == ord('\r') or key == 13: 
@@ -118,7 +118,7 @@ class VideoLabeller:
                             break
                         else:    
                             class_str += chr(key) if key != ord(' ') else ''
-                        self.draw_msg(frame, f"Enter class id: {class_str}")
+                        self.draw_frame(frame, f"Enter class id: {class_str}")
                 else:
                     self.select_event_class(self.current_class_id)
                     
@@ -126,30 +126,30 @@ class VideoLabeller:
                 self.select_event_class(chr(key))
 
             elif key == ord('\b'):  # Backspace - удаление разметки, внутри которой находится текущий кадр
-                for annotation in self.annotations:
-                    if annotation['start_frame'] <= self.frame_number <= annotation['end_frame']:
-                        self.draw_msg(frame, 
-                                      [f"Delete annotation {annotation['class']}?", 
-                                       f"From {annotation['start_frame']} to {annotation['end_frame']}",
-                                       "'Enter' to confirm"]
-                            )
-                        while True:
-                            if cv2.waitKey(0) & 0xFF == ord('\r'):
-                                self.annotations.remove(annotation)
-                            break
-                        break
-            
+                ann2del = [ann for ann in self.annotations if ann['start_frame'] <= self.frame_number <= ann['end_frame']]
+                shortest_ann = min(ann2del, key=lambda ann: abs(ann['end_frame'] - ann['start_frame']))
+                self.draw_frame(frame, 
+                                [f"Delete annotation {shortest_ann['class']}?", 
+                                 f"From {shortest_ann['start_frame']} to {shortest_ann['end_frame']}",
+                                 "'Enter' to confirm"]
+                    )
+                while True:
+                    if cv2.waitKey(0) & 0xFF == ord('\r'):
+                        self.annotations.remove(shortest_ann)
+                    break
+    
             elif key == 27:  # Escape - отмена разметки
                 if self.current_class_id is not None:
+                    print(f'Cancel annotation for {self.current_class_id} from {self.current_start_frame} frame')
                     self.current_class_id = None
                     self.current_start_frame = None
                 else:
-                    self.draw_msg(frame, "Cancel annotation without saving?\n'Enter' to confirm")
+                    self.draw_frame(frame, "Cancel annotation without saving?\n'Enter' to confirm")
                     if cv2.waitKey(0) & 0xFF == ord('\r'):
                         break
                     
             elif key == ord('\\'):  # End - завершение разметки 
-                self.draw_msg(frame, "Finish annotation?\n'Enter' to confirm") 
+                self.draw_frame(frame, "Finish annotation?\n'Enter' to confirm") 
                 if cv2.waitKey(0) & 0xFF == ord('\r'):
                     self.save_annotations()
                     break
@@ -176,10 +176,16 @@ class VideoLabeller:
                 self.current_start_frame = self.frame_number
                 print(f"Start of event '{self.event_classes[self.current_class_id]}' marked at frame {self.current_start_frame}")
             else:
+                if self.current_start_frame < self.frame_number:
+                    end_frame = self.frame_number
+                else:
+                    end_frame = self.current_start_frame
+                    self.current_start_frame = self.frame_number
+                
                 self.annotations.append({
                     'class': self.event_classes[self.current_class_id],
                     'start_frame': self.current_start_frame,
-                    'end_frame': self.frame_number
+                    'end_frame': end_frame
                 })
                 print(f"End of event '{self.event_classes[self.current_class_id]}' marked at frame {self.frame_number}")
                 self.current_start_frame = None
@@ -187,7 +193,7 @@ class VideoLabeller:
         else:
             print(f"Unknown class {event_class_id}")
 
-    def draw_frame(self, frame):
+    def draw_frame(self, frame, msg=None, show=True):
         """ Draws the frame with event labels and annotations.
         
         Args:
@@ -204,23 +210,41 @@ class VideoLabeller:
         if frame.shape[0] != self.resized_height or frame.shape[1] != self.resized_width:
             frame = cv2.resize(frame, (self.resized_width, self.resized_height))
         
+        if msg is not None:
+            if type(msg) == str:
+                msg = msg.split('\n')
+            cv2.rectangle(frame, (10, 70), (frame.shape[1] - 10, 80+len(msg)*30), (0, 0, 0), -1)
+            for i, m in enumerate(msg):
+                cv2.putText(frame, m, (10, 100+i*30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            cv2.imshow(self.video_name, self.draw_frame(frame))
+        
         if self.current_class_id is not None:
-            cv2.rectangle(frame, (10, 10), (frame.shape[1] - 10, 60), (128, 128, 128), -1)
-            cv2.putText(frame, f'Labelling {self.event_classes[self.current_class_id]}', (10, 50), 
+            cv2.rectangle(frame, (10, frame.shape[0]-70), (frame.shape[1]-10, frame.shape[0]-20), (128, 128, 128), -1)
+            cv2.putText(frame, f'Labelling {self.event_classes[self.current_class_id]}', (10, frame.shape[0]-30), 
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
-            
-        for annotation in self.annotations:
-            if annotation['start_frame'] <= self.frame_number <= annotation['end_frame']:
+    
+        ann2show = [ann for ann in self.annotations if ann['start_frame'] <= self.frame_number <= ann['end_frame']]
+        # if annotation['start_frame'] <= self.frame_number <= annotation['end_frame']:
+        if len(ann2show) != 0: 
+            rect_l = (frame.shape[1] - 20) // len(ann2show)
+            for i, annotation in enumerate(ann2show):    
                 ind = list(self.event_classes.values()).index(annotation['class'])
-                cv2.rectangle(frame, (10, 10), (frame.shape[1] - 10, 60), PALLETE[ind], -1)
-                cv2.putText(frame, annotation['class'], (10, 50), 
+                cv2.rectangle(frame, (10+rect_l*i, 10), 
+                                (frame.shape[1]-10+rect_l*i, 60), PALLETE[ind], -1)
+                cv2.putText(frame, annotation['class'], (10+rect_l*i, 50), 
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-        cv2.putText(frame, f"{self.frame_number}", (10, frame.shape[0] - 10), 
+        # frame number
+        cv2.putText(frame, f"{self.frame_number}", (frame.shape[1]-200, frame.shape[0]-30), 
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        
         progress_img = self.create_progress_image()
         # concatenate vertically
-        return np.concatenate((frame, progress_img), axis=0)
-
+        frame = np.concatenate((frame, progress_img), axis=0)
+        if show:
+            cv2.imshow(self.video_name, frame)
+        
+        return frame
+        
     def create_progress_image(self, height=20):
         """Creates a progress image to display the timeline of the annotations.
         
@@ -294,20 +318,6 @@ class VideoLabeller:
         elif step > 0:
             self.frame_number = min(self.frame_number + step, self.total_frames - step)
             self.playing = False
-            
-    def draw_msg(self, frame, msg):
-        """ Draws a message on the frame with a black background.
-        
-        Args:
-            frame (numpy.ndarray): The frame to draw the message on.
-            msg (str or list): The message to draw. If a string, it is split into lines.
-        """
-        if type(msg) == str:
-            msg = msg.split('\n')
-        cv2.rectangle(frame, (10, 70), (frame.shape[1] - 10, 80+len(msg)*30), (0, 0, 0), -1)
-        for i, m in enumerate(msg):
-            cv2.putText(frame, m, (10, 100+i*30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-        cv2.imshow(self.video_name, self.draw_frame(frame))
 
     def read_annotation(self, video_path, output_dir, event_classes):
         """ Reads annotations from a file and checks if they correspond to the current video event classes.
